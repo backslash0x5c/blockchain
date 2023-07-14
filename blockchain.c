@@ -14,6 +14,7 @@ typedef struct {
   char* data;
   unsigned char previousHash[SHA256_DIGEST_LENGTH];
   unsigned char hash[SHA256_DIGEST_LENGTH];
+  int nonce;
 } Block;
 
 // ブロックチェーンの構造体
@@ -25,6 +26,10 @@ typedef struct {
 Blockchain* initializeBlockchain(void);
 Block* createBlock(int index, char* data, unsigned char* previousHash);
 void calculateHash(Block* block, unsigned char* hash);
+
+void mineBlock(Block* block, int difficulty);
+void isBlockValid(Block* block, Block* previousBlock, int difficulty);
+
 void addBlock(Blockchain* blockchain, Block* block);
 void printHash(unsigned char* hash, int length);
 void printBlockchain(Blockchain* blockchain);
@@ -35,9 +40,11 @@ int main(void) {
 
   // 新しいブロックの作成と追加
   Block* block1 = createBlock(1, "Data 1", blockchain->chain[blockchain->length - 1]->hash);
+  mineBlock(block1, 2);
   addBlock(blockchain, block1);
 
   Block* block2 = createBlock(2, "Data 2", blockchain->chain[blockchain->length - 1]->hash);
+  mineBlock(block2, 2);
   addBlock(blockchain, block2);
 
   // ブロックチェーンの表示
@@ -70,7 +77,8 @@ Block* createBlock(int index, char* data, unsigned char* previousHash) {
   block->index = index;
   block->timestamp = time(NULL);
   block->data = data;
-  
+  block->nonce = 0;
+
   memcpy(block->previousHash, previousHash, SHA256_DIGEST_LENGTH);
   calculateHash(block, block->hash);
   return block;
@@ -78,16 +86,47 @@ Block* createBlock(int index, char* data, unsigned char* previousHash) {
 
 // ブロックのハッシュを計算する関数
 void calculateHash(Block* block, unsigned char* hash) {
-  char header[SHA256_DIGEST_LENGTH + sizeof(block->timestamp) + sizeof(block->data)];
-  // header = timestamp + data + previousHash
-  memcpy(header, &block->timestamp, sizeof(block->timestamp));  // ブロックのタイムスタンプをヘッダーにコピー
+  char header[SHA256_DIGEST_LENGTH + sizeof(block->timestamp) + sizeof(block->data) + sizeof(block->nonce)];
+  // header = timestamp + data + previousHash + nonce
+  memcpy(header, &(block->timestamp), sizeof(block->timestamp));  // ブロックのタイムスタンプをヘッダーにコピー
   memcpy(header + sizeof(block->timestamp), block->data, sizeof(block->data)); // ブロックのデータをヘッダーにコピー
   memcpy(header + sizeof(block->timestamp) + sizeof(block->data), block->previousHash, SHA256_DIGEST_LENGTH); // 前のブロックのハッシュをヘッダーにコピー
+  memcpy(header + sizeof(block->timestamp) + sizeof(block->data) + SHA256_DIGEST_LENGTH, &(block->nonce), sizeof(block->nonce)); // ブロックのnonceをヘッダーにコピー
 
   SHA256_CTX sha256;
   SHA256_Init(&sha256);
   SHA256_Update(&sha256, header, sizeof(header));
   SHA256_Final(hash, &sha256);
+}
+
+void mineBlock(Block* block, int difficulty) {
+  char target[difficulty + 1];
+  memset(target, '0', difficulty);
+  target[difficulty] = '\0';
+
+  while (strncmp((const char*)block->hash, target, difficulty) != 0) {
+    block->nonce++;
+    calculateHash(block, block->hash);
+  }
+
+  printf("Block mined: Nonce = %d\n", block->nonce);
+}
+
+int isBlockValid(Block* block, Block* previousBlock, int difficulty) {
+  char target[difficulty + 1];
+  memset(target, '0', difficulty);
+  target[difficulty] = '\0';
+
+  if (strncmp((const char*)block->previousHash,
+              (const char*)previousBlock->hash, SHA256_DIGEST_LENGTH) != 0) {
+    return 0;  // 前のブロックのハッシュ値が一致しない
+  }
+
+  if (strncmp((const char*)block->hash, target, difficulty) != 0) {
+    return 0;  // マイニングの難易度を満たしていない
+  }
+
+  return 1;
 }
 
 // ブロックチェーンにブロックを追加する関数
