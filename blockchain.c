@@ -1,4 +1,4 @@
-// Compile: gcc -o blockchain blockchain.c -lcrypto
+// Compile: gcc blockchain.c -o blockchain.exe -lcrypto
 #include <openssl/sha.h>
 #include <stdio.h>
 #include <stdlib.h>
