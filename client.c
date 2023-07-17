@@ -1,88 +1,76 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "blockchain.h"
 
-#define SERVER_ADDR "127.0.0.1"
-#define SERVER_PORT 8080
-#define BUF_SIZE 1024
+void showMenu();
 
-int transfer(int);
+int main(void) {
+  int serverSocket;
+  struct sockaddr_in serverAddr;
 
-int transfer(int sock) {
-  char send_buf[BUF_SIZE], recv_buf;
-  int send_size, recv_size;
+  // サーバとの接続用ソケットの作成
+  serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+  if (serverSocket == -1) {
+    perror("socket");
+    return -1;
+  }
+
+  // サーバアドレスの設定
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_port = htons((unsigned short)SERVER_PORT);
+  serverAddr.sin_addr.s_addr = inet_addr(SERVER_ADDR);
+
+  // サーバに接続
+  if (connect(serverSocket, (struct sockaddr *)&serverAddr,
+              sizeof(serverAddr)) == -1) {
+    perror("connect");
+    return -1;
+  }
+
+  showMenu();
 
   while (1) {
+    int choice;
+    char *data;
 
-    /* サーバーに送る文字列を取得 */
-    printf("Input Message...\n");
-    scanf("%s", send_buf);
+    // ユーザの選択を受け付ける
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
 
-    /* 文字列を送信 */
-    send_size = send(sock, send_buf, strlen(send_buf) + 1, 0);
-    if (send_size == -1) {
-      printf("send error\n");
+    switch (choice) {
+    case 1:
+      // ブロックのデータを入力
+      printf("Enter data for the block: ");
+      scanf("%s", data);
+
+      // サーバに選択とデータを送信
+      if (send(serverSocket, &choice, sizeof(choice), 0) == -1) {
+        perror("send");
+        return -1;
+      }
+      if (send(serverSocket, data, sizeof(data), 0) == -1) {
+        perror("send");
+        return -1;
+      }
       break;
-    }
-
-    /* サーバーからの応答を受信 */
-    recv_size = recv(sock, &recv_buf, 1, 0);
-    if (recv_size == -1) {
-      printf("recv error\n");
-      break;
-    }
-    if (recv_size == 0) {
-      /* 受信サイズが0の場合は相手が接続閉じていると判断 */
-      printf("connection ended\n");
-      break;
-    }
-
-    /* 応答が0の場合はデータ送信終了 */
-    if (recv_buf == 0) {
-      printf("Finish connection\n");
+    case 2:
+      // クライアントの接続を終了
+      if (send(serverSocket, &choice, sizeof(choice), 0) == -1) {
+        perror("send");
+        return -1;
+      }
+      close(serverSocket);
+      return 0;
+    default:
+      printf("Invalid choice\n");
       break;
     }
   }
+
   return 0;
 }
 
-int main(void) {
-  int sock;
-  struct sockaddr_in addr;
-
-  /* ソケットを作成 */
-  sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (sock == -1) {
-    printf("socket error\n");
-    return -1;
-  }
-
-  /* 構造体を全て0にセット */
-  memset(&addr, 0, sizeof(struct sockaddr_in));
-
-  /* サーバーのIPアドレスとポートの情報を設定 */
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((unsigned short)SERVER_PORT);
-  addr.sin_addr.s_addr = inet_addr(SERVER_ADDR);
-
-  /* サーバーに接続要求送信 */
-  printf("Start connect...\n");
-  if (connect(sock, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) ==
-      -1) {
-    printf("connect error\n");
-    close(sock);
-    return -1;
-  }
-  printf("Finish connect!\n");
-
-  /* 接続済のソケットでデータのやり取り */
-  transfer(sock);
-
-  /* ソケット通信をクローズ */
-  close(sock);
-
-  return 0;
+void showMenu() {
+  printf("----- Menu -----\n");
+  printf("1. Add Block\n");
+  printf("2. Exit\n");
+  printf("----------------\n");
 }

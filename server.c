@@ -1,117 +1,158 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "blockchain.h"
 
-#define SERVER_ADDR "127.0.0.1"
-#define SERVER_PORT 8080
-#define BUF_SIZE 1024
+void handleClient(int clientSocket, Blockchain *blockchain);
+void sendBlockAddedMessage(int clientSocket, Block *block);
+void sendBlockchainInfo(int clientSocket, Blockchain *blockchain);
 
-int transfer(int);
+int main(void) {
+  Blockchain *blockchain = initializeBlockchain();
 
-int transfer(int sock) {
-  int recv_size, send_size;
-  char recv_buf[BUF_SIZE], send_buf;
+  int serverSocket, clientSocket;
+  struct sockaddr_in serverAddr, clientAddr;
+  socklen_t clientAddrLen;
+
+  // サーバソケットの作成
+  serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+  if (serverSocket == -1) {
+    perror("socket");
+    return -1;
+  }
+
+  memset(&serverAddr, 0, sizeof(struct sockaddr_in));
+
+  // サーバアドレスの設定
+  serverAddr.sin_family = AF_INET;
+  serverAddr.sin_port = htons((unsigned short)SERVER_PORT);
+  serverAddr.sin_addr.s_addr = inet_addr(SERVER_ADDR);
+
+  // サーバにアドレスをバインド
+  if (bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) == -1) {
+    perror("bind");
+    close(serverSocket);
+    return -1;
+  }
+
+  // クライアントからの接続待機
+  if (listen(serverSocket, QUEUE_SIZE) == -1) {
+    perror("listen");
+    close(serverSocket);
+    return -1;
+  }
+
+  printf("Server is listening on port %d...\n", SERVER_PORT);
 
   while (1) {
-
-    /* クライアントから文字列を受信 */
-    recv_size = recv(sock, recv_buf, BUF_SIZE, 0);
-    if (recv_size == -1) {
-      printf("recv error\n");
-      break;
+    // クライアントからの接続受付
+    clientAddrLen = sizeof(clientAddr);
+    clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, &clientAddrLen);
+    if (clientSocket == -1) {
+      perror("accept");
+      continue;
     }
-    if (recv_size == 0) {
-      /* 受信サイズが0の場合は相手が接続閉じていると判断 */
-      printf("connection ended\n");
-      break;
-    }
+    printf("Client connected: %s\n", inet_ntoa(clientAddr.sin_addr));
 
-    /* 受信した文字列を表示 */
-    printf("%s\n", recv_buf);
+    // クライアントとの通信を処理
+    handleClient(clientSocket, blockchain);
 
-    /* 文字列が"finish"ならクライアントとの接続終了 */
-    if (strcmp(recv_buf, "finish") == 0) {
-
-      /* 接続終了を表す0を送信 */
-      send_buf = 0;
-      send_size = send(sock, &send_buf, 1, 0);
-      if (send_size == -1) {
-        printf("send error\n");
-        break;
-      }
-      break;
-    } else {
-      /* "finish"以外の場合はクライアントとの接続を継続 */
-      send_buf = 1;
-      send_size = send(sock, &send_buf, 1, 0);
-      if (send_size == -1) {
-        printf("send error\n");
-        break;
-      }
-    }
+    close(clientSocket);
   }
+
+  // ブロックチェーンの解放
+  freeBlockchain(blockchain);
+
+  close(serverSocket);
 
   return 0;
 }
 
-int main(void) {
-  int w_addr, c_sock;
-  struct sockaddr_in a_addr;
+void handleClient(int clientSocket, Blockchain *blockchain) {
+  int choice;
+  char *data;
 
-  /* ソケットを作成 */
-  w_addr = socket(AF_INET, SOCK_STREAM, 0);
-  if (w_addr == -1) {
-    printf("socket error\n");
-    return -1;
-  }
-
-  /* 構造体を全て0にセット */
-  memset(&a_addr, 0, sizeof(struct sockaddr_in));
-
-  /* サーバーのIPアドレスとポートの情報を設定 */
-  a_addr.sin_family = AF_INET;
-  a_addr.sin_port = htons((unsigned short)SERVER_PORT);
-  a_addr.sin_addr.s_addr = inet_addr(SERVER_ADDR);
-
-  /* ソケットに情報を設定 */
-  if (bind(w_addr, (const struct sockaddr *)&a_addr, sizeof(a_addr)) == -1) {
-    printf("bind error\n");
-    close(w_addr);
-    return -1;
-  }
-
-  /* ソケットを接続待ちに設定 */
-  if (listen(w_addr, 3) == -1) {
-    printf("listen error\n");
-    close(w_addr);
-    return -1;
-  }
+  // メニューの表示
+  printf("----- Menu -----\n");
+  printf("1. Add Block\n");
+  printf("2. Exit\n");
+  printf("----------------\n");
 
   while (1) {
-    /* 接続要求の受け付け（接続要求くるまで待ち） */
-    printf("Waiting connect...\n");
-    c_sock = accept(w_addr, NULL, NULL);
-    if (c_sock == -1) {
-      printf("accept error\n");
-      close(w_addr);
-      return -1;
+    // クライアントからの選択を受け取る
+    if (recv(clientSocket, &choice, sizeof(choice), 0) == -1) {
+      perror("recv");
+      return;
     }
-    printf("Connected!!\n");
 
-    /* 接続済のソケットでデータのやり取り */
-    transfer(c_sock);
+    // 選択に応じた処理を実行
+    switch (choice) {
+    case 1:
+      // ブロックのデータを受け取る
+      if (recv(clientSocket, data, sizeof(data), 0) == -1) {
+        perror("recv");
+        return;
+      }
 
-    /* ソケット通信をクローズ */
-    close(c_sock);
+      // ブロックの作成と追加
+      Block *newBlock = createBlock(data, blockchain->head->hash);
+      addBlock(blockchain, newBlock);
 
-    /* 次の接続要求の受け付けに移る */
+      // ブロック追加のメッセージとブロックチェーン情報をクライアントに送信
+      sendBlockAddedMessage(clientSocket, newBlock);
+      sendBlockchainInfo(clientSocket, blockchain);
+      break;
+    case 2:
+      // クライアントからの接続を終了
+      return;
+    default:
+      // 無効な選択
+      printf("Invalid choice\n");
+      break;
+    }
+  }
+}
+
+void sendBlockAddedMessage(int clientSocket, Block *block) {
+  char message[256];
+  snprintf(message, sizeof(message), "Block added (Hash: ");
+  for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+    snprintf(message + strlen(message), sizeof(message) - strlen(message),
+             "%02x", block->hash[i]);
+  }
+  snprintf(message + strlen(message), sizeof(message) - strlen(message), ")");
+  if (send(clientSocket, message, sizeof(message), 0) == -1) {
+    perror("send");
+  }
+}
+
+void sendBlockchainInfo(int clientSocket, Blockchain *blockchain) {
+  Block *currentBlock = blockchain->head;
+  char message[512];
+
+  snprintf(message, sizeof(message), "Blockchain Info:\n");
+
+  while (currentBlock != NULL) {
+    snprintf(message + strlen(message), sizeof(message) - strlen(message),
+             "Timestamp: %s", ctime(&(currentBlock->timestamp)));
+    snprintf(message + strlen(message), sizeof(message) - strlen(message),
+             "Data: %s\n", currentBlock->data);
+    snprintf(message + strlen(message), sizeof(message) - strlen(message),
+             "Previous Hash: ");
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+      snprintf(message + strlen(message), sizeof(message) - strlen(message),
+               "%02x", currentBlock->previousHash[i]);
+    }
+    snprintf(message + strlen(message), sizeof(message) - strlen(message),
+             "\nHash: ");
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+      snprintf(message + strlen(message), sizeof(message) - strlen(message),
+               "%02x", currentBlock->hash[i]);
+    }
+    snprintf(message + strlen(message), sizeof(message) - strlen(message),
+             "\n\n");
+
+    currentBlock = currentBlock->next;
   }
 
-  /* 接続待ちソケットをクローズ */
-  close(w_addr);
-
-  return 0;
+  if (send(clientSocket, message, sizeof(message), 0) == -1) {
+    perror("send");
+  }
 }
