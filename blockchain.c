@@ -1,14 +1,14 @@
-// Compile: gcc blockchain_beta.c -o blockchain_beta.exe -lcrypto
+// Compile: gcc blockchain.c -o blockchain.exe -lssl -lcrypto
 #include "blockchain.h"
 
-Blockchain *initializeBlockchain(void);
-Block *createBlock(const char *data, unsigned char *prevHash);
-void calculateHash(Block *block, unsigned char *hash);
-void addBlock(Blockchain *blockchain, Block *block);
-void freeBlockchain(Blockchain *blockchain);
+// Blockchain *initializeBlockchain(void);
+// Block *createBlock(const char *data, unsigned char *prevHash);
+// void calculateHash(Block *block, unsigned char *hash);
+// void addBlock(Blockchain *blockchain, Block *block);
+// void freeBlockchain(Blockchain *blockchain);
 
-void printHash(const unsigned char *hash, int length);
-void printBlockchain(Blockchain *blockchain);
+// void printHash(const unsigned char *hash, int length);
+// void printBlockchain(Blockchain *blockchain);
 
 // int main(void) {
 //   Blockchain *blockchain = initializeBlockchain();
@@ -56,7 +56,7 @@ void calculateHash(Block *block, unsigned char *hash) {
   char header[sizeof(block->timestamp) + sizeof(block->data) +
               SHA256_DIGEST_LENGTH];
   memcpy(header, &(block->timestamp), sizeof(block->timestamp));
-  memcpy(header + sizeof(block->timestamp), block->data, sizeof(block->data));
+  memcpy(header + sizeof(block->timestamp), block->data, sizeof(*(block->data)));
   memcpy(header + sizeof(block->timestamp) + sizeof(block->data),
          block->prevHash, SHA256_DIGEST_LENGTH);
 

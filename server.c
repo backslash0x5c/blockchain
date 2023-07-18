@@ -3,11 +3,14 @@
 void handleClient(int clientSocket, Blockchain *blockchain);
 void sendBlockAddedMessage(int clientSocket, Block *block);
 void sendBlockchainInfo(int clientSocket, Blockchain *blockchain);
+void showMenu();
 
 int main(void) {
   Blockchain *blockchain = initializeBlockchain();
+  Block *genesisBlock = createBlock("Genesis Block", (unsigned char *)"");
+  addBlock(blockchain, genesisBlock);
 
-  int serverSocket, clientSocket;
+  int serverSocket, clientSocket, clientNum = 0;
   struct sockaddr_in serverAddr, clientAddr;
   socklen_t clientAddrLen;
 
@@ -38,7 +41,6 @@ int main(void) {
     close(serverSocket);
     return -1;
   }
-
   printf("Server is listening on port %d...\n", SERVER_PORT);
 
   while (1) {
@@ -50,11 +52,15 @@ int main(void) {
       continue;
     }
     printf("Client connected: %s\n", inet_ntoa(clientAddr.sin_addr));
+    clientNum++;
 
     // クライアントとの通信を処理
     handleClient(clientSocket, blockchain);
-
     close(clientSocket);
+
+    if (clientNum <= 0) {
+      break;
+    }
   }
 
   // ブロックチェーンの解放
@@ -67,13 +73,10 @@ int main(void) {
 
 void handleClient(int clientSocket, Blockchain *blockchain) {
   int choice;
-  char *data;
+  char data[MAX_DATA_LENGTH];
 
   // メニューの表示
-  printf("----- Menu -----\n");
-  printf("1. Add Block\n");
-  printf("2. Exit\n");
-  printf("----------------\n");
+  showMenu();
 
   while (1) {
     // クライアントからの選択を受け取る
@@ -81,6 +84,7 @@ void handleClient(int clientSocket, Blockchain *blockchain) {
       perror("recv");
       return;
     }
+    printf("Choice: %d\n", choice);
 
     // 選択に応じた処理を実行
     switch (choice) {
@@ -101,6 +105,7 @@ void handleClient(int clientSocket, Blockchain *blockchain) {
       break;
     case 2:
       // クライアントからの接続を終了
+      printf("Client disconnected\n\n");
       return;
     default:
       // 無効な選択
@@ -112,22 +117,25 @@ void handleClient(int clientSocket, Blockchain *blockchain) {
 
 void sendBlockAddedMessage(int clientSocket, Block *block) {
   char message[256];
+
   snprintf(message, sizeof(message), "Block added (Hash: ");
   for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
     snprintf(message + strlen(message), sizeof(message) - strlen(message),
              "%02x", block->hash[i]);
   }
   snprintf(message + strlen(message), sizeof(message) - strlen(message), ")");
+
   if (send(clientSocket, message, sizeof(message), 0) == -1) {
     perror("send");
+  }
+  else {
+    printf("Block added successfully\n");
   }
 }
 
 void sendBlockchainInfo(int clientSocket, Blockchain *blockchain) {
   Block *currentBlock = blockchain->head;
   char message[512];
-
-  snprintf(message, sizeof(message), "Blockchain Info:\n");
 
   while (currentBlock != NULL) {
     snprintf(message + strlen(message), sizeof(message) - strlen(message),
@@ -138,7 +146,7 @@ void sendBlockchainInfo(int clientSocket, Blockchain *blockchain) {
              "Previous Hash: ");
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
       snprintf(message + strlen(message), sizeof(message) - strlen(message),
-               "%02x", currentBlock->previousHash[i]);
+               "%02x", currentBlock->prevHash[i]);
     }
     snprintf(message + strlen(message), sizeof(message) - strlen(message),
              "\nHash: ");
@@ -155,4 +163,14 @@ void sendBlockchainInfo(int clientSocket, Blockchain *blockchain) {
   if (send(clientSocket, message, sizeof(message), 0) == -1) {
     perror("send");
   }
+  else {
+    printf("Blockchain info sent successfully\n");
+  }
+}
+
+void showMenu() {
+  printf("----- Menu -----\n");
+  printf("1. Add Block\n");
+  printf("2. Exit\n");
+  printf("----------------\n");
 }
